@@ -1,5 +1,6 @@
 /* eslint-disable camelcase */
 import { urlJoin } from 'url-join-ts'
+import { CUSTOM_MODEL_ID } from '../constants'
 import { getUniversalFetch } from '../universal-fetch'
 import { fetchSSE, getSettings } from '../utils'
 import { AbstractEngine } from './abstract-engine'
@@ -93,6 +94,16 @@ export abstract class AbstractOpenAI extends AbstractEngine {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     async getBaseRequestBody(): Promise<Record<string, any>> {
         const model = await this.getAPIModel()
+        const settings = await getSettings()
+        // For Gemini's OpenAI compatible API.
+        if (settings.apiModel === CUSTOM_MODEL_ID && settings.customModelName?.startsWith('gemini')) {
+            return {
+                model,
+                temperature: 0,
+                top_p: 1,
+                stream: true,
+            }
+        }
         return {
             model,
             temperature: 0,
@@ -113,9 +124,8 @@ export abstract class AbstractOpenAI extends AbstractEngine {
             // We should check if the settings.apiURLPath is match `/deployments/{deployment-id}/chat/completions`.
             // If not, we should use the legacy parameters.
             if (req.rolePrompt) {
-                body[
-                    'prompt'
-                ] = `<|im_start|>user\n${req.rolePrompt}\n\n${req.commandPrompt}\n<|im_end|>\n<|im_start|>assistant\n`
+                body['prompt'] =
+                    `<|im_start|>user\n${req.rolePrompt}\n\n${req.commandPrompt}\n<|im_end|>\n<|im_start|>assistant\n`
             } else {
                 body['prompt'] = `<|im_start|>user\n${req.commandPrompt}\n<|im_end|>\n<|im_start|>assistant\n`
             }
