@@ -23,6 +23,10 @@ const SAFETY_SETTINGS = [
         category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
         threshold: 'BLOCK_NONE',
     },
+    {
+        category: 'HARM_CATEGORY_CIVIC_INTEGRITY',
+        threshold: 'BLOCK_NONE',
+    },
 ]
 
 export class Gemini extends AbstractEngine {
@@ -108,19 +112,51 @@ export class Gemini extends AbstractEngine {
                     req.onError(JSON.stringify(e))
                     return
                 }
-                if (!resp.candidates || resp.candidates.length === 0) {
+
+                // Check for prompt feedback first (e.g., blocked prompt)
+                if (resp.promptFeedback) {
                     hasError = true
                     finished = true
-                    req.onError('no candidates')
+                    const reason = resp.promptFeedback.blockReason || 'Unknown reason'
+                    req.onError(`Prompt blocked or invalid: ${reason}`)
                     return
                 }
+
+                // Now check for candidates
+                if (!resp.candidates || resp.candidates.length === 0) {
+                    // It's possible this is just the final message chunk without candidates but with usageMetadata
+                    // We shouldn't necessarily treat it as an error unless it's the *only* thing received.
+                    // However, the existing logic treats it as an error, so we'll keep that for now,
+                    // but it might need refinement if valid responses sometimes lack candidates.
+                    // For now, we assume a message *should* have candidates if it's not promptFeedback.
+                    hasError = true
+                    finished = true
+                    req.onError('Received response object without candidates')
+                    return
+                }
+
+                // Check finish reason within the candidate
                 if (resp.candidates[0].finishReason && resp.candidates[0].finishReason !== 'STOP') {
                     finished = true
+                    // Pass the specific finish reason if available
                     req.onFinished(resp.candidates[0].finishReason)
                     return
                 }
-                const targetTxt = resp.candidates[0].content.parts[0].text
-                await req.onMessage({ content: targetTxt, role: '' })
+
+                // Ensure content and parts exist before accessing text
+                if (
+                    resp.candidates[0].content &&
+                    resp.candidates[0].content.parts &&
+                    resp.candidates[0].content.parts.length > 0
+                ) {
+                    const targetTxt = resp.candidates[0].content.parts[0].text
+                    if (targetTxt !== undefined && targetTxt !== null) {
+                        await req.onMessage({ content: targetTxt, role: '' })
+                    }
+                } else {
+                    // Handle cases where content or parts might be missing, though ideally the API shouldn't send this
+                    console.warn('Received candidate without expected content structure:', resp.candidates[0])
+                }
             },
             onError: (err) => {
                 hasError = true
