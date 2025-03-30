@@ -202,7 +202,7 @@ browser.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
                 // Note: Linter might incorrectly flag sendResponse with arguments. This usage is correct.
                 // @ts-expect-error - webextension-polyfill types seem incorrect for sendResponse
                 sendResponse({ error: 'No payload provided' })
-                return
+                return false // Indicate synchronous response for this path
             }
 
             // 使用 Promise.all 等待关键的异步操作完成
