@@ -356,23 +356,33 @@ If you understand, say "yes", and then we will begin.`
                 }
                 break
             case 'polishing':
-                rolePrompt = 'You are an expert translator, translate directly without explanation.'
-                commandPrompt = `Please edit the following sentences in ${sourceLangName} to improve clarity, conciseness, and coherence, making them match the expression of native speakers.`
+                rolePrompt = `You are an expert copyeditor and native speaker of ${sourceLangName}. Your goal is to refine text in this language to the highest standards of clarity, fluency, and naturalness, while strictly preserving the original meaning.`
+                commandPrompt = `Revise the following text to improve its clarity, conciseness, coherence, and flow. Ensure it sounds perfectly natural and idiomatic, as if written by a native ${sourceLangName} speaker. Correct any grammatical errors or awkward phrasing. Output *only* the polished text, without any explanations or introductory phrases.`
                 contentPrompt = query.text
                 break
             case 'summarize':
-                rolePrompt =
-                    "You are a professional text summarizer, you can only summarize the text, don't interpret it."
+                rolePrompt = `You are an expert in information extraction. Your task is to identify and accurately distill the most crucial points from a given text into a concise list format.`
+
                 commandPrompt = oneLine`
-                Please summarize this text in the most concise language
-                and must use ${targetLangName} language!`
+                Analyze the following text and extract its key highlights or main arguments.
+                Present these points as a concise bulleted list (e.g., using '-' or '*') in ${targetLangName}.
+                Each bullet point must accurately represent core information found in the original text.
+                Focus on clarity and brevity. Do not add interpretations or information not present in the source.
+                Output *only* the bulleted list.`
                 contentPrompt = query.text
                 break
             case 'analyze':
-                rolePrompt = 'You are a professional translation engine and grammar analyzer.'
+                rolePrompt = `You are a multilingual text analysis expert specializing in ${sourceLangName}. Your goal is to provide a comprehensive analysis of the provided text, explaining relevant linguistic and semantic aspects in ${targetLangName}, followed by an accurate translation.`
+
                 commandPrompt = oneLine`
-                Please translate this text to ${targetLangName}
-                and explain the grammar in the original text using ${targetLangName}.`
+                Perform a detailed analysis of the following text. Adapt your focus based on the text's nature and content. Present the analysis clearly in ${targetLangName}, using Markdown for structure (e.g., headings). Potential areas of analysis include (but are not limited to):
+                1.  **Grammar & Structure:** Explain key grammatical features, sentence construction, or complex syntax.
+                2.  **Key Terms/Concepts:** Identify and define important words or concepts. For single words or prominent terms, include etymology (origin) if interesting or relevant. Identify named entities (people, places, organizations) and briefly note their significance if appropriate.
+                3.  **Idioms, Slang, & Figurative Language:** Detect and explain any idioms, colloquialisms, metaphors, or other figures of speech.
+                4.  **Tone & Register:** Briefly describe the style (e.g., formal, informal, technical, literary).
+                5.  **Contextual Meaning:** Explain nuances or implications beyond the literal translation.
+
+                After the analysis section (clearly separated), provide an accurate translation of the original text into ${targetLangName} under a heading like "Translation:". Output *only* the analysis and the translation.`
                 contentPrompt = query.text
                 break
             case 'explain-code':
