@@ -51,8 +51,8 @@ try {
         if (browser.sidePanel) {
             // @ts-expect-error 处理浏览器兼容性和类型定义问题
             browser.sidePanel
-                .setPanelBehavior({ openPanelOnActionClick: true })
-                .then(() => console.log('Side panel behavior set: will open on action click'))
+                .setPanelBehavior({ openPanelOnActionClick: false })
+                .then(() => console.log('Side panel behavior set: will NOT open on action click'))
                 .catch((err: unknown) => console.error('Failed to set side panel behavior:', err))
         } else {
             console.warn('sidePanel API not available in this browser version')
@@ -74,13 +74,20 @@ browser.contextMenus?.create(
     }
 )
 
-browser.contextMenus?.onClicked.addListener(async function (info) {
-    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
-    tab.id &&
-        browser.tabs.sendMessage(tab.id, {
-            type: 'open-translator',
-            info,
-        })
+browser.contextMenus?.onClicked.addListener(async (info, tab) => {
+    // @ts-expect-error 处理浏览器兼容性和类型定义问题
+    if (info.menuItemId === 'open-translator' && tab?.windowId && browser.sidePanel) {
+        try {
+            // @ts-expect-error 处理浏览器兼容性和类型定义问题
+            await browser.sidePanel.open({ windowId: tab.windowId })
+            console.log(`Side panel opened for window ID: ${tab.windowId}`)
+        } catch (error) {
+            console.error('Error opening side panel:', error)
+        }
+        // @ts-expect-error 处理浏览器兼容性和类型定义问题
+    } else if (info.menuItemId === 'open-translator' && !browser.sidePanel) {
+        console.warn('Side panel API is not available.')
+    }
 })
 
 async function fetchWithStream(
