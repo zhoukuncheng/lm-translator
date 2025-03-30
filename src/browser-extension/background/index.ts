@@ -205,7 +205,7 @@ browser.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
                 return
             }
 
-            // 使用 Promise.all 等待所有异步操作完成
+            // 使用 Promise.all 等待关键的异步操作完成
             try {
                 // 保存翻译结果（增加时间戳）
                 const translationResult = {
@@ -216,8 +216,8 @@ browser.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
                 lastTranslationResult = translationResult
                 console.log('Translation result saved to memory:', lastTranslationResult)
 
-                // 等待所有异步操作完成后再发送响应
-                await Promise.all([
+                // 定义关键异步操作
+                const criticalOperations = [
                     // 保存到存储
                     (async () => {
                         try {
@@ -227,25 +227,18 @@ browser.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
                             console.log('Translation result saved to storage')
                         } catch (err) {
                             console.error('Error saving translation result to storage:', err)
-                            throw err
+                            throw err // Propagate error to Promise.all catch
                         }
                     })(),
-
-                    // 设置侧边栏
+                    // 设置侧边栏状态（如果需要快速响应）
                     (async () => {
                         try {
                             // 获取当前活动标签页
                             const tabs = await browser.tabs.query({ active: true, currentWindow: true })
-                            console.log('Active tabs:', tabs)
-
                             if (tabs.length > 0 && tabs[0]?.id) {
                                 const tabId = tabs[0].id
-                                console.log(`Using tab ${tabId} for sidepanel`)
-
-                                // 检查 sidePanel API 是否可用
                                 // @ts-expect-error 处理浏览器兼容性和类型定义问题
                                 if (browser.sidePanel) {
-                                    // 只设置为启用状态，但不主动打开
                                     console.log(`Setting side panel options for tab ${tabId}`)
                                     try {
                                         // @ts-expect-error 处理浏览器兼容性和类型定义问题
@@ -253,6 +246,7 @@ browser.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
                                             tabId: tabId,
                                             enabled: true,
                                         })
+                                        console.log(`Side panel enabled for tab ${tabId}`)
                                     } catch (error: unknown) {
                                         const sidePanelError = error as Error
                                         console.warn(
@@ -261,57 +255,61 @@ browser.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
                                         )
                                     }
                                 } else {
-                                    console.warn('sidePanel API not available on this tab')
+                                    console.warn('sidePanel API not available.')
                                 }
                             }
                         } catch (error) {
-                            console.error('Error setting side panel:', error)
-                            // 不抛出错误，因为这不是关键操作
+                            console.error('Error setting side panel options:', error)
+                            // 不抛出错误，因为这不是阻止响应发送的关键操作
                         }
                     })(),
+                ]
 
-                    // 设置角标通知
-                    (async () => {
-                        try {
-                            await browser.action.setBadgeText({ text: '!' })
-                            await browser.action.setBadgeBackgroundColor({ color: '#4CAF50' })
-                            console.log('Badge notification set on extension icon')
-                        } catch (err) {
-                            console.error('Error setting badge notification:', err)
-                            // 不抛出错误，因为这不是关键操作
-                        }
-                    })(),
+                // 等待关键操作完成
+                await Promise.all(criticalOperations)
 
-                    // 发送消息到侧边栏
-                    (async () => {
-                        try {
-                            console.log('Attempting to send message directly to sidepanel if open')
-                            await browser.runtime
-                                .sendMessage({
-                                    type: MessageType.TRANSLATION_RESULT_UPDATED,
-                                    payload: lastTranslationResult,
-                                })
-                                .catch((err) => {
-                                    // 忽略因为侧边栏没有监听器而产生的错误
-                                    if (!err.message.includes('Receiving end does not exist')) {
-                                        console.error('Error sending message to sidepanel:', err)
-                                    } else {
-                                        console.log('Sidepanel not listening yet, will get data when opened')
-                                    }
-                                })
-                        } catch (err) {
-                            console.error('Error sending message to sidepanel:', err)
-                            // 不抛出错误，因为这不是关键操作
-                        }
-                    })(),
-                ])
-
-                // 所有操作完成后发送成功响应
+                // 关键操作完成后立即发送成功响应
+                console.log('Critical operations complete. Sending success response.')
                 // Note: Linter might incorrectly flag sendResponse with arguments. This usage is correct.
                 // @ts-expect-error - webextension-polyfill types seem incorrect for sendResponse
                 sendResponse({ success: true })
+
+                // --- 非关键操作在响应发送后执行 ---
+
+                // 设置角标通知 (fire and forget)
+                void (async () => {
+                    try {
+                        await browser.action.setBadgeText({ text: '!' })
+                        await browser.action.setBadgeBackgroundColor({ color: '#4CAF50' })
+                        console.log('Badge notification set on extension icon (post-response)')
+                    } catch (err) {
+                        console.error('Error setting badge notification (post-response):', err)
+                    }
+                })()
+
+                // 发送消息到侧边栏 (fire and forget)
+                void (async () => {
+                    try {
+                        console.log('Attempting to send message directly to sidepanel if open (post-response)')
+                        await browser.runtime
+                            .sendMessage({
+                                type: MessageType.TRANSLATION_RESULT_UPDATED,
+                                payload: lastTranslationResult,
+                            })
+                            .catch((err) => {
+                                if (!err.message.includes('Receiving end does not exist')) {
+                                    console.error('Error sending message to sidepanel (post-response):', err)
+                                } else {
+                                    console.log('Sidepanel not listening yet (post-response)')
+                                }
+                            })
+                    } catch (err) {
+                        console.error('Error sending message to sidepanel (post-response):', err)
+                    }
+                })()
             } catch (error) {
-                console.error('Error in STORE_TRANSLATION_RESULT handler:', error)
+                // 如果关键操作失败，则发送错误响应
+                console.error('Error during critical operations in STORE_TRANSLATION_RESULT handler:', error)
                 // Note: Linter might incorrectly flag sendResponse with arguments. This usage is correct.
                 // @ts-expect-error - webextension-polyfill types seem incorrect for sendResponse
                 sendResponse({
