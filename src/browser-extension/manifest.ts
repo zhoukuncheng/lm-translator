@@ -39,7 +39,7 @@ export function getManifest(browser: 'firefox' | 'chromium') {
             service_worker: 'src/browser-extension/background/index.ts',
         },
 
-        permissions: ['storage', 'contextMenus', 'webRequest'],
+        permissions: ['storage', 'contextMenus', 'webRequest', 'sidePanel'],
 
         commands: {
             'open-popup': {
@@ -71,6 +71,10 @@ export function getManifest(browser: 'firefox' | 'chromium') {
             'https://*.cohere.ai/',
             'https://*.deepseek.com/',
         ],
+
+        side_panel: {
+            default_path: 'src/browser-extension/sidepanel/index.html',
+        },
     }
 
     if (browser === 'firefox') {
