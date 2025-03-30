@@ -122,21 +122,13 @@ export class Gemini extends AbstractEngine {
                     return
                 }
 
-                // Now check for candidates
-                if (!resp.candidates || resp.candidates.length === 0) {
-                    // It's possible this is just the final message chunk without candidates but with usageMetadata
-                    // We shouldn't necessarily treat it as an error unless it's the *only* thing received.
-                    // However, the existing logic treats it as an error, so we'll keep that for now,
-                    // but it might need refinement if valid responses sometimes lack candidates.
-                    // For now, we assume a message *should* have candidates if it's not promptFeedback.
-                    hasError = true
-                    finished = true
-                    req.onError('Received response object without candidates')
-                    return
-                }
-
                 // Check finish reason within the candidate
-                if (resp.candidates[0].finishReason && resp.candidates[0].finishReason !== 'STOP') {
+                if (
+                    resp.candidates &&
+                    resp.candidates.length > 0 &&
+                    resp.candidates[0].finishReason &&
+                    resp.candidates[0].finishReason !== 'STOP'
+                ) {
                     finished = true
                     // Pass the specific finish reason if available
                     req.onFinished(resp.candidates[0].finishReason)
@@ -145,6 +137,8 @@ export class Gemini extends AbstractEngine {
 
                 // Ensure content and parts exist before accessing text
                 if (
+                    resp.candidates &&
+                    resp.candidates.length > 0 &&
                     resp.candidates[0].content &&
                     resp.candidates[0].content.parts &&
                     resp.candidates[0].content.parts.length > 0
