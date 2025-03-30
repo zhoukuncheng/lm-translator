@@ -9,6 +9,49 @@ import { chatgptArkoseReqParams } from '@/common/constants'
 import { keyChatgptArkoseReqForm, keyChatgptArkoseReqUrl } from '@/common/engines/chatgpt'
 import { keyKimiAccessToken } from '@/common/engines/kimi'
 import { keyChatGLMAccessToken } from '@/common/engines/chatglm'
+import { type TranslationResult } from '../../common/translate/types'
+
+// 定义消息类型枚举，用于类型安全的消息传递
+export enum MessageType {
+    STORE_TRANSLATION_RESULT = 'STORE_TRANSLATION_RESULT',
+    GET_LAST_TRANSLATION = 'GET_LAST_TRANSLATION',
+    TRANSLATION_RESULT_UPDATED = 'TRANSLATION_RESULT_UPDATED',
+    PING = 'PING',
+}
+
+// --- 添加存储键常量 ---
+const TRANSLATION_RESULT_STORAGE_KEY = 'openai_translator_last_translation_result'
+
+// --- 添加缺失的变量 ---
+let lastTranslationResult: TranslationResult | null = null
+
+// --- 添加顶层日志，用于确认背景脚本执行 ---
+console.log('%%%%% BACKGROUND SCRIPT LOADED %%%%%')
+
+// --- 初始化时从存储中加载上次的翻译结果 ---
+browser.storage.local
+    .get(TRANSLATION_RESULT_STORAGE_KEY)
+    .then((result) => {
+        if (result[TRANSLATION_RESULT_STORAGE_KEY]) {
+            lastTranslationResult = result[TRANSLATION_RESULT_STORAGE_KEY] as TranslationResult
+            console.log('Loaded last translation result from storage:', lastTranslationResult)
+        } else {
+            console.log('No stored translation result found')
+        }
+    })
+    .catch((err) => {
+        console.error('Error loading translation result from storage:', err)
+    })
+
+// --- 在初始化时配置侧边栏行为 ---
+try {
+    browser.sidePanel
+        .setPanelBehavior({ openPanelOnActionClick: true })
+        .then(() => console.log('Side panel behavior set: will open on action click'))
+        .catch((err) => console.error('Failed to set side panel behavior:', err))
+} catch (error) {
+    console.error('Error configuring side panel behavior:', error)
+}
 
 browser.contextMenus?.create(
     {
@@ -130,31 +173,214 @@ async function callMethod(request: any, service: any): Promise<any> {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-browser.runtime.onMessage.addListener(async (request) => {
-    switch (request.type) {
-        case BackgroundEventNames.vocabularyService:
-            return await callMethod(request, vocabularyInternalService)
-        case BackgroundEventNames.actionService:
-            return await callMethod(request, actionInternalService)
-        case BackgroundEventNames.getItem:
-            const resp = await browser.storage.local.get(request.key)
-            return {
-                value: resp[request.key],
-            }
-        case BackgroundEventNames.setItem:
-            return await browser.storage.local.set({
-                [request.key]: request.value,
-            })
-        case BackgroundEventNames.removeItem:
-            return await browser.storage.local.remove(request.key)
-        case 'openOptionsPage':
-            await browser.storage.local.set({
-                [optionsPageOpenaiAPIKeyPromotionIDKey]: request.openaiAPIKeyPromotionID,
-            })
-            await browser.storage.local.set({ [optionsPageHeaderPromotionIDKey]: request.headerPromotionID })
-            browser.runtime.openOptionsPage()
-            return
+browser.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
+    console.log('Background script received message:', request, 'from:', sender)
+
+    if (!request || !request.type) {
+        console.error('Invalid message received: missing type')
+        sendResponse({ error: 'Invalid message: missing type' })
+        return
     }
+
+    // 处理不同类型的消息
+    switch (request.type) {
+        case MessageType.STORE_TRANSLATION_RESULT:
+            console.log(`${MessageType.STORE_TRANSLATION_RESULT} received with payload:`, request.payload)
+            if (!request.payload) {
+                console.error(`No payload in ${MessageType.STORE_TRANSLATION_RESULT} message`)
+                sendResponse({ error: 'No payload provided' })
+                return
+            }
+
+            // 使用 Promise.all 等待所有异步操作完成
+            try {
+                // 保存翻译结果（增加时间戳）
+                const translationResult = {
+                    ...(request.payload as TranslationResult),
+                    timestamp: Date.now(),
+                }
+
+                lastTranslationResult = translationResult
+                console.log('Translation result saved to memory:', lastTranslationResult)
+
+                // 等待所有异步操作完成后再发送响应
+                await Promise.all([
+                    // 保存到存储
+                    (async () => {
+                        try {
+                            await browser.storage.local.set({
+                                [TRANSLATION_RESULT_STORAGE_KEY]: translationResult,
+                            })
+                            console.log('Translation result saved to storage')
+                        } catch (err) {
+                            console.error('Error saving translation result to storage:', err)
+                            throw err
+                        }
+                    })(),
+
+                    // 设置侧边栏
+                    (async () => {
+                        try {
+                            // 获取当前活动标签页
+                            const tabs = await browser.tabs.query({ active: true, currentWindow: true })
+                            console.log('Active tabs:', tabs)
+
+                            if (tabs.length > 0 && tabs[0]?.id) {
+                                const tabId = tabs[0].id
+                                console.log(`Using tab ${tabId} for sidepanel`)
+
+                                // 检查 sidePanel API 是否可用
+                                if (!browser.sidePanel) {
+                                    throw new Error('sidePanel API not available')
+                                }
+
+                                // 只设置为启用状态，但不主动打开
+                                console.log(`Setting side panel options for tab ${tabId}`)
+                                await browser.sidePanel.setOptions({
+                                    tabId: tabId,
+                                    enabled: true,
+                                })
+                            }
+                        } catch (error) {
+                            console.error('Error setting side panel:', error)
+                            // 不抛出错误，因为这不是关键操作
+                        }
+                    })(),
+
+                    // 设置角标通知
+                    (async () => {
+                        try {
+                            await browser.action.setBadgeText({ text: '!' })
+                            await browser.action.setBadgeBackgroundColor({ color: '#4CAF50' })
+                            console.log('Badge notification set on extension icon')
+                        } catch (err) {
+                            console.error('Error setting badge notification:', err)
+                            // 不抛出错误，因为这不是关键操作
+                        }
+                    })(),
+
+                    // 发送消息到侧边栏
+                    (async () => {
+                        try {
+                            console.log('Attempting to send message directly to sidepanel if open')
+                            await browser.runtime
+                                .sendMessage({
+                                    type: MessageType.TRANSLATION_RESULT_UPDATED,
+                                    payload: lastTranslationResult,
+                                })
+                                .catch((err) => {
+                                    // 忽略因为侧边栏没有监听器而产生的错误
+                                    if (!err.message.includes('Receiving end does not exist')) {
+                                        console.error('Error sending message to sidepanel:', err)
+                                    } else {
+                                        console.log('Sidepanel not listening yet, will get data when opened')
+                                    }
+                                })
+                        } catch (err) {
+                            console.error('Error sending message to sidepanel:', err)
+                            // 不抛出错误，因为这不是关键操作
+                        }
+                    })(),
+                ])
+
+                // 所有操作完成后发送成功响应
+                sendResponse({ success: true })
+            } catch (error) {
+                console.error('Error in STORE_TRANSLATION_RESULT handler:', error)
+                sendResponse({
+                    success: false,
+                    error: error instanceof Error ? error.message : 'Unknown error occurred',
+                })
+            }
+
+            // 返回 true 表示我们将异步发送响应
+            return true
+
+        case MessageType.GET_LAST_TRANSLATION:
+            console.log(`Responding to ${MessageType.GET_LAST_TRANSLATION} request`)
+
+            try {
+                // 尝试从存储中获取，因为service worker可能已重启，内存中的lastTranslationResult可能为null
+                const storage = await browser.storage.local.get(TRANSLATION_RESULT_STORAGE_KEY)
+                const storedResult = storage[TRANSLATION_RESULT_STORAGE_KEY] as TranslationResult | undefined
+
+                // 使用存储中的结果或内存中的结果，以确保获取最新的
+                const result = storedResult || lastTranslationResult
+
+                console.log('Translation result retrieved:', result)
+
+                if (result) {
+                    // 返回包含 success: true 和结果数据的对象
+                    return { success: true, ...result }
+                } else {
+                    return { success: false, error: 'No translation available yet.' }
+                }
+            } catch (err) {
+                console.error('Error retrieving translation result:', err)
+                return {
+                    success: false,
+                    error: `Error retrieving translation: ${err instanceof Error ? err.message : String(err)}`,
+                }
+            }
+
+        case BackgroundEventNames.vocabularyService:
+            try {
+                // 同步调用或不需要异步响应，可以不返回 true
+                // 但为了统一处理异步，返回 true 也没问题
+                return await callMethod(request, vocabularyInternalService)
+            } catch (e) {
+                console.error('Error calling vocabularyService:', e)
+                return { error: String(e) }
+            }
+        case BackgroundEventNames.actionService:
+            try {
+                // 同步调用或不需要异步响应，可以不返回 true
+                return await callMethod(request, actionInternalService)
+            } catch (e) {
+                console.error('Error calling actionService:', e)
+                return { error: String(e) }
+            }
+        case BackgroundEventNames.getItem:
+            // 异步操作，需要返回 true
+            ;(async () => {
+                await browser.storage.local.get(request.key)
+                // 注意：这里不能直接 return，需要在异步函数内部调用 sendResponse
+                // 或者让外层 listener 返回 Promise
+                // 为了简单起见，我们让外层 listener 返回 true，并依赖隐式返回
+            })()
+            return true // **** 需要返回 true ****
+        case BackgroundEventNames.setItem:
+            // 异步操作，需要返回 true
+            ;(async () => {
+                await browser.storage.local.set({
+                    [request.key]: request.value,
+                })
+            })()
+            return true // **** 需要返回 true ****
+        case BackgroundEventNames.removeItem:
+            // 异步操作，需要返回 true
+            ;(async () => {
+                await browser.storage.local.remove(request.key)
+            })()
+            return true // **** 需要返回 true ****
+        case 'openOptionsPage':
+            // 异步操作，但通常不关心响应
+            ;(async () => {
+                await browser.storage.local.set({
+                    [optionsPageOpenaiAPIKeyPromotionIDKey]: request.openaiAPIKeyPromotionID,
+                })
+                await browser.storage.local.set({ [optionsPageHeaderPromotionIDKey]: request.headerPromotionID })
+                browser.runtime.openOptionsPage()
+            })()
+            // 这里可以不返回 true，因为原始调用者不期待响应
+            break
+
+        default:
+            console.warn(`Received unknown message type: ${request.type}`)
+            // 对于未处理的消息，可以不返回 true
+            break
+    }
+    // 如果 case 中没有显式 return，则默认返回 undefined (同步响应)
 })
 
 browser.commands.onCommand.addListener(async (command) => {

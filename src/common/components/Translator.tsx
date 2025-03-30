@@ -1076,6 +1076,36 @@ function InnerTranslator(props: IInnerTranslatorProps) {
 
     const translateText = useDeepCompareCallback(
         async (selectedWord: string, signal: AbortSignal) => {
+            // --- 新增代码 开始 ---
+            // 辅助函数：发送结果到后台脚本
+            const sendResultToBackground = (payload: { success: boolean; text?: string; error?: string }) => {
+                if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+                    console.log('Sending translation result to background:', payload)
+                    chrome.runtime.sendMessage(
+                        {
+                            type: 'STORE_TRANSLATION_RESULT',
+                            payload: payload,
+                        },
+                        (response) => {
+                            if (chrome.runtime.lastError) {
+                                console.error(
+                                    'Error sending STORE_TRANSLATION_RESULT:',
+                                    chrome.runtime.lastError.message
+                                )
+                            } else if (response && response.success) {
+                                console.log('Background script acknowledged storing result and opening side panel.')
+                            } else {
+                                console.warn(
+                                    'Background script reported an issue storing result/opening panel:',
+                                    response?.error
+                                )
+                            }
+                        }
+                    )
+                }
+            }
+            // --- 新增代码 结束 ---
+
             translationIDRef.current += 1
             if (translationIDRef.current > 1024) {
                 translationIDRef.current = 0
@@ -1168,16 +1198,29 @@ function InnerTranslator(props: IInnerTranslatorProps) {
                         })
                     },
                     onFinish: (reason) => {
-                        afterTranslate(reason)
+                        const isSuccess = reason === 'stop' || reason === 'eos' || reason === 'end_turn'
                         setTranslatedText((translatedText) => {
-                            const result = translatedText
+                            const result = translatedText // 获取最终文本
                             cache.set(cachedKey, result)
+                            // --- 新增代码 开始 ---
+                            // 发送结果（成功或因非错误原因结束）
+                            sendResultToBackground({
+                                success: isSuccess,
+                                text: isSuccess ? result : undefined,
+                                error: isSuccess ? undefined : `Translation finished with reason: ${reason}`,
+                            })
+                            // --- 新增代码 结束 ---
                             return result
                         })
+                        afterTranslate(reason) // 保持调用 afterTranslate
                     },
                     onError: (error) => {
                         setActionStr('Error')
                         setErrorMessage(error)
+                        // --- 新增代码 开始 ---
+                        // 发送错误结果
+                        sendResultToBackground({ success: false, error: error })
+                        // --- 新增代码 结束 ---
                     },
                 })
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1187,8 +1230,13 @@ function InnerTranslator(props: IInnerTranslatorProps) {
                     isStopped = true
                     return
                 }
+                const errorMsg = (error as Error).toString() // 获取错误消息
                 setActionStr('Error')
-                setErrorMessage((error as Error).toString())
+                setErrorMessage(errorMsg)
+                // --- 新增代码 开始 ---
+                // 发送捕获到的错误结果
+                sendResultToBackground({ success: false, error: errorMsg })
+                // --- 新增代码 结束 ---
             } finally {
                 if (!isStopped && translationID === translationIDRef.current) {
                     stopLoading()
