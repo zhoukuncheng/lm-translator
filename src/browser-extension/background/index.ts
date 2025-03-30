@@ -66,7 +66,7 @@ browser.contextMenus?.create(
     {
         id: 'open-translator',
         type: 'normal',
-        title: 'OpenAI Translator',
+        title: 'OpenAI Translator Side Panel',
         contexts: ['page', 'selection'],
     },
     () => {

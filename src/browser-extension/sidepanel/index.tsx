@@ -58,7 +58,7 @@ function SidePanel() {
                         setShowNotification(true)
                         setTimeout(() => setShowNotification(false), 3000)
                     } else {
-                        setError(message.payload.error ?? '翻译失败')
+                        setError(message.payload.error ?? 'Translation failed')
                         setTranslation(null)
                     }
                     sendResponse({ received: true })
@@ -96,13 +96,13 @@ function SidePanel() {
 
                     if (chrome.runtime.lastError) {
                         log('Error in GET_LAST_TRANSLATION', { error: chrome.runtime.lastError.message })
-                        setError(`获取翻译结果时出错: ${chrome.runtime.lastError.message}`)
+                        setError(`Error fetching translation result: ${chrome.runtime.lastError.message}`)
                         return
                     }
 
                     if (!response) {
                         log('Received empty response')
-                        setError('收到空响应')
+                        setError('Received empty response')
                         return
                     }
 
@@ -118,21 +118,21 @@ function SidePanel() {
                             setTranslation(null)
                         } else {
                             log('Unexpected response structure', response)
-                            setError('收到无效的响应结构')
+                            setError('Received invalid response structure')
                         }
                     } else {
                         log('Non-object response', { response })
-                        setError('收到非对象响应')
+                        setError('Received non-object response')
                     }
                 } catch (err) {
                     log('Error processing response', { error: err })
-                    setError(`处理响应时出错: ${err instanceof Error ? err.message : String(err)}`)
+                    setError(`Error processing response: ${err instanceof Error ? err.message : String(err)}`)
                     setLoading(false)
                 }
             })
         } catch (err) {
             log('Error sending GET_LAST_TRANSLATION message', { error: err })
-            setError(`发送消息时出错: ${err instanceof Error ? err.message : String(err)}`)
+            setError(`Error sending message: ${err instanceof Error ? err.message : String(err)}`)
             setLoading(false)
         }
     }, [])
@@ -145,46 +145,52 @@ function SidePanel() {
 
     return (
         <div>
-            <h1>翻译结果</h1>
+            <h1>Result</h1>
 
             {lastUpdated && (
                 <div style={{ fontSize: '12px', color: '#666', marginBottom: '12px' }}>
-                    上次更新时间: {formatLastUpdated()}
+                    Last updated: {formatLastUpdated()}
                 </div>
             )}
 
             {loading ? (
-                <div className='waiting'>正在加载翻译结果...</div>
+                <div className='waiting'>Waiting Result...</div>
             ) : (
                 <>
-                    {error && <p className='error'>错误: {error}</p>}
+                    {error && <p className='error'>Error: {error}</p>}
 
                     {translation ? (
                         <pre>{translation}</pre>
                     ) : (
-                        !error && <p className='waiting'>等待翻译结果... 请在想要翻译的地方选择文本并使用翻译器。</p>
+                        !error && (
+                            <p className='waiting'>
+                                Waiting for translation... Please select text on the page and use the translator.
+                            </p>
+                        )
                     )}
                 </>
             )}
 
             {!translation && !error && !loading && (
                 <div style={{ marginTop: '20px', fontSize: '14px', color: '#666' }}>
-                    <p>💡 提示：</p>
+                    <p>💡 Tips:</p>
                     <ul>
-                        <li>在需要翻译的文本上右键，选择 `&quot;`OpenAI Translator`&rdquo;`</li>
-                        <li>或使用快捷键选取并翻译文本</li>
-                        <li>翻译完成后，可以在此侧边栏查看结果</li>
+                        <li>
+                            Right-click on the text you want to translate and select `&quot;`OpenAI Translator`&rdquo;`
+                        </li>
+                        <li>Or use the shortcut key to select and translate text</li>
+                        <li>After translation, you can view the result in this sidebar</li>
                     </ul>
                 </div>
             )}
 
-            <div className={`notification ${showNotification ? 'show' : ''}`}>翻译结果已更新！</div>
+            <div className={`notification ${showNotification ? 'show' : ''}`}>Result Updated!</div>
 
             {/* 开发环境中的调试面板 - 在生产环境中可以删除或条件显示 */}
             {debugInfo.length > 0 && (
                 <div style={{ marginTop: '40px', borderTop: '1px dashed #ccc', paddingTop: '10px' }}>
                     <details>
-                        <summary style={{ cursor: 'pointer', color: '#666', fontSize: '12px' }}>调试信息</summary>
+                        <summary style={{ cursor: 'pointer', color: '#666', fontSize: '12px' }}>Debug Info</summary>
                         <pre
                             style={{
                                 fontSize: '11px',
